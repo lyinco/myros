@@ -107,6 +107,11 @@ std::map<int, std::vector<cv::Point3f>> ArucoTracker::getAruco3d(const std::map<
     std::map<int, std::vector<cv::Point3f>> result;
     if (corners1.empty() || corners2.empty()) return result;
 
+    std::vector<cv::Point3f> pts_cam;
+    std::vector<cv::Point3f> pts_obj;
+    std::map<int, std::vector<cv::Point3f>> world_obj = board_.getBoardCorners();
+
+
     for (const auto& kv : corners1) {
 
       int id = kv.first;
@@ -126,7 +131,31 @@ std::map<int, std::vector<cv::Point3f>> ArucoTracker::getAruco3d(const std::map<
           cam_calib_.triangulatePoint(pt1, pt2, pt3d);
           result[id].push_back(pt3d);
       }
+    
+      auto world_it = world_obj.find(id);
+      if (world_it == world_obj.end()) continue;
+      if (world_it->second.size() != 4) continue;
+      pts_cam.push_back(result[id][0]);
+      pts_obj.push_back(world_obj[id][0]);
     }
+
+    if (pts_cam.empty() || pts_cam.size()!=pts_obj.size()) return result;
+
+    Eigen::Matrix3d matr;
+    Eigen::Vector3d matt;
+    estimateRigidTransform(pts_obj, pts_cam,  matr, matt);
+
+    // 所有点转换到
+    for (const auto& kv : world_obj){
+        int id = kv.first;
+        auto it = result.find(id);
+        if (it == result.end()) {
+            std::vector<cv::Point3f> mm;
+            transCoors(kv.second,  matr, matt, mm);
+            result[id] = mm;
+        }
+    }
+    
     return result;
 }
 
@@ -269,3 +298,98 @@ bool ArucoTracker::estimateMarkerPose(
     return true;
 }
 
+// Q=RP+t
+bool ArucoTracker::estimateRigidTransform(const std::vector<cv::Point3f>& P, const std::vector<cv::Point3f>& Q, Eigen::Matrix3d& R, Eigen::Vector3d& t)
+{
+    if (P.size() != Q.size() || P.size() < 3) {
+        std::cerr << "Error: Need at least 3 corresponding points."
+                  << std::endl;
+        return false;
+    }
+
+    const int n = static_cast<int>(P.size());
+
+    // 1. 计算质心
+    Eigen::Vector3d centroid_P = Eigen::Vector3d::Zero();
+    Eigen::Vector3d centroid_Q = Eigen::Vector3d::Zero();
+
+    for (int i = 0; i < n; ++i) {
+        centroid_P += Eigen::Vector3d(P[i].x, P[i].y, P[i].z);
+        centroid_Q += Eigen::Vector3d(Q[i].x, Q[i].y, Q[i].z);
+    }
+
+    centroid_P /= n;
+    centroid_Q /= n;
+
+    // 2. 构造协方差矩阵
+    Eigen::Matrix3d H = Eigen::Matrix3d::Zero();
+
+    for (int i = 0; i < n; ++i) {
+        Eigen::Vector3d p(P[i].x, P[i].y, P[i].z);
+        Eigen::Vector3d q(Q[i].x, Q[i].y, Q[i].z);
+
+        p -= centroid_P;
+        q -= centroid_Q;
+
+        H += p * q.transpose();
+    }
+
+    // 3. SVD 分解
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(
+        H, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+    Eigen::Matrix3d U = svd.matrixU();
+    Eigen::Matrix3d V = svd.matrixV();
+
+    // 4. 求旋转矩阵，避免反射
+    Eigen::Matrix3d D = Eigen::Matrix3d::Identity();
+
+    if ((V * U.transpose()).determinant() < 0.0) {
+        D(2, 2) = -1.0;
+    }
+
+    R = V * D * U.transpose();
+    // 5. 求平移向量
+    t = centroid_Q - R * centroid_P;
+    return true;
+}
+
+// 将 cv::Point3f 转换为 Eigen::Vector3d
+Eigen::Vector3d ArucoTracker::toEigen(const cv::Point3f& p)
+{
+    return Eigen::Vector3d(p.x, p.y, p.z);
+}
+
+cv::Point3f ArucoTracker::toPointf(const Eigen::Vector3d& p)
+{
+    return cv::Point3f(
+        static_cast<float>(p(0)),
+        static_cast<float>(p(1)),
+        static_cast<float>(p(2))
+    );
+}
+
+
+bool ArucoTracker::transCoors(
+    const std::vector<cv::Point3f>& P,
+    Eigen::Matrix3d& R,
+    Eigen::Vector3d& t,
+    std::vector<cv::Point3f>& Q)
+{
+    Q.clear();
+    Q.reserve(P.size());
+
+    for (size_t i = 0; i < P.size(); ++i) {
+        Eigen::Vector3d point_P(
+            P[i].x,
+            P[i].y,
+            P[i].z
+        );
+
+        Eigen::Vector3d point_Q = R * point_P + t;
+
+        Q.push_back(toPointf(point_Q));
+    }
+
+    return true;
+}

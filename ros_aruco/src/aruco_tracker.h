@@ -33,5 +33,10 @@ private:
   std::map<int, std::vector<cv::Point3f>> getAruco3d(const std::map<int, std::vector<cv::Point2f>>& corners1, 
   std::map<int, std::vector<cv::Point2f>> corners2);
   bool estimateMarkerPose(const std::map<int, std::vector<cv::Point3f>>& P_cam, cv::Matx33f& R,cv::Vec3f& t);
+  static bool estimateRigidTransform(const std::vector<cv::Point3f>& P,const std::vector<cv::Point3f>& Q, Eigen::Matrix3d& R, Eigen::Vector3d& t);
+  static bool transCoors(const std::vector<cv::Point3f>& P, Eigen::Matrix3d& R, Eigen::Vector3d& t, std::vector<cv::Point3f>& Q);
+  static cv::Point3f toPointf(const Eigen::Vector3d& p);
+  static Eigen::Vector3d toEigen(const cv::Point3f& p);
+
 
 };
