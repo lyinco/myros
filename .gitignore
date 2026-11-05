@@ -1,0 +1,40 @@
+# ---------- IDE ----------
+.idea/
+*.iml
+.vscode/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# ---------- 采集/标定数据（体积大，不入库） ----------
+*.bag
+*.db3
+bags/
+*.csv
+*.pkl
+*.npy
+*.npz
+*.mat
+
+# ---------- 图像 ----------
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tif
+*.tiff
+*.webp
+
+# ---------- 其他二进制 ----------
+*.pth
+*.pt
+*.onnx
+*.mp4
+*.avi
+*.pcap
